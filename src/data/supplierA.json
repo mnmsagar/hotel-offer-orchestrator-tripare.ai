@@ -1,0 +1,11 @@
+[
+  { "hotelId": "a-del-101", "name": "Taj Palace", "price": 6200, "city": "delhi", "commissionPct": 12 },
+  { "hotelId": "a-del-102", "name": "The Leela Ambience", "price": 7500, "city": "delhi", "commissionPct": 10 },
+  { "hotelId": "a-del-103", "name": "ITC Maurya", "price": 5800, "city": "delhi", "commissionPct": 15 },
+  { "hotelId": "a-del-104", "name": "Radisson Blu", "price": 4500, "city": "delhi", "commissionPct": 8 },
+  { "hotelId": "a-del-105", "name": "The Lalit", "price": 5200, "city": "delhi", "commissionPct": 10 },
+  { "hotelId": "a-del-106", "name": "Hotel Royal Plaza", "price": 3900, "city": "delhi", "commissionPct": 9 },
+  { "hotelId": "a-bom-201", "name": "The Taj Mahal Palace", "price": 9500, "city": "mumbai", "commissionPct": 12 },
+  { "hotelId": "a-bom-202", "name": "Trident Nariman Point", "price": 7000, "city": "mumbai", "commissionPct": 10 },
+  { "hotelId": "a-blr-301", "name": "ITC Gardenia", "price": 6800, "city": "bangalore", "commissionPct": 11 }
+]

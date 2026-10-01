@@ -1,0 +1,2 @@
+# Normalize line endings to LF in the repo and on checkout (Docker/Linux friendly).
+* text=auto eol=lf

@@ -1,0 +1,11 @@
+[
+  { "hotelId": "b-del-901", "name": "Taj Palace", "price": 5900, "city": "delhi", "commissionPct": 10 },
+  { "hotelId": "b-del-902", "name": "the leela ambience", "price": 7500, "city": "delhi", "commissionPct": 14 },
+  { "hotelId": "b-del-903", "name": "ITC Maurya", "price": 6100, "city": "delhi", "commissionPct": 12 },
+  { "hotelId": "b-del-904", "name": "Radisson Blu", "price": 4500, "city": "delhi", "commissionPct": 8 },
+  { "hotelId": "b-del-905", "name": "Pride Plaza", "price": 5500, "city": "delhi", "commissionPct": 11 },
+  { "hotelId": "b-del-906", "name": "Bloomrooms", "price": 2800, "city": "delhi", "commissionPct": 7 },
+  { "hotelId": "b-bom-801", "name": "The Taj Mahal Palace", "price": 9200, "city": "mumbai", "commissionPct": 10 },
+  { "hotelId": "b-bom-802", "name": "Sea Princess", "price": 6000, "city": "mumbai", "commissionPct": 9 },
+  { "hotelId": "b-blr-701", "name": "The Oberoi", "price": 8000, "city": "bangalore", "commissionPct": 13 }
+]

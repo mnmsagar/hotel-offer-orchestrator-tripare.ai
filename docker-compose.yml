@@ -1,0 +1,112 @@
+name: hotel-offer-orchestrator
+
+x-app-env: &app-env
+  # The admin failure toggle is part of the demo, so run as "development" inside compose.
+  NODE_ENV: development
+  LOG_LEVEL: info
+  SUPPLIER_BASE_URL: http://api:3000
+  TEMPORAL_ADDRESS: temporal:7233
+  TEMPORAL_NAMESPACE: default
+  TEMPORAL_TASK_QUEUE: hotel-offers
+  REDIS_URL: redis://redis:6379
+  CACHE_TTL_SECONDS: 300
+  SUPPLIER_A_DOWN: ${SUPPLIER_A_DOWN:-false}
+  SUPPLIER_B_DOWN: ${SUPPLIER_B_DOWN:-false}
+
+services:
+  api:
+    build: .
+    image: hotel-offer-orchestrator:local
+    command: ["node", "dist/api/server.js"]
+    environment:
+      <<: *app-env
+      PORT: 3000
+    ports:
+      - "3000:3000"
+    depends_on:
+      redis:
+        condition: service_healthy
+      temporal:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/health/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  worker:
+    image: hotel-offer-orchestrator:local
+    command: ["node", "dist/worker/index.js"]
+    environment: *app-env
+    depends_on:
+      api:
+        condition: service_healthy # activities call the mock suppliers on the API
+      redis:
+        condition: service_healthy
+      temporal:
+        condition: service_healthy
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  temporal-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: temporal
+      POSTGRES_PASSWORD: temporal
+    volumes:
+      - temporal-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U temporal"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  temporal:
+    # auto-setup creates the schema and the "default" namespace on first boot (local dev only).
+    image: temporalio/auto-setup:1.29.7
+    environment:
+      DB: postgres12
+      DB_PORT: 5432
+      POSTGRES_USER: temporal
+      POSTGRES_PWD: temporal
+      POSTGRES_SEEDS: temporal-db
+    ports:
+      - "7233:7233"
+    depends_on:
+      temporal-db:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          temporal operator cluster health --address temporal:7233 | grep -q SERVING ||
+          tctl --address temporal:7233 cluster health | grep -q SERVING
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
+
+  temporal-ui:
+    image: temporalio/ui:2.54.1
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_CORS_ORIGINS: http://localhost:3000
+    ports:
+      - "8080:8080"
+    depends_on:
+      temporal:
+        condition: service_healthy
+
+volumes:
+  temporal-db-data:

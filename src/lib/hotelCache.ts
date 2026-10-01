@@ -6,6 +6,14 @@ import { redisKeys } from './redisKeys';
 export interface CityCacheMeta {
   count: number;
   updatedAt: string;
+  /** True when a supplier failed, so the cached list may be missing hotels. */
+  partial: boolean;
+}
+
+export interface WriteCityOffersOptions {
+  ttlSeconds: number;
+  partial?: boolean;
+  now?: Date;
 }
 
 /**
@@ -18,11 +26,10 @@ export const writeCityOffers = async (
   redis: Redis,
   city: string,
   offers: readonly HotelOffer[],
-  ttlSeconds: number,
-  now: Date = new Date(),
+  { ttlSeconds, partial = false, now = new Date() }: WriteCityOffersOptions,
 ): Promise<void> => {
   const keys = { byPrice: redisKeys.byPrice(city), data: redisKeys.data(city), meta: redisKeys.meta(city) };
-  const meta: CityCacheMeta = { count: offers.length, updatedAt: now.toISOString() };
+  const meta: CityCacheMeta = { count: offers.length, updatedAt: now.toISOString(), partial };
 
   const tx = redis.multi().del(keys.byPrice, keys.data, keys.meta);
 

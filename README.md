@@ -1,5 +1,7 @@
 # Hotel Offer Orchestrator
 
+[![CI](https://github.com/mnmsagar/hotel-offer-orchestrator-tripare.ai/actions/workflows/ci.yml/badge.svg)](https://github.com/mnmsagar/hotel-offer-orchestrator-tripare.ai/actions/workflows/ci.yml)
+
 Aggregates hotel offers from two suppliers, de-duplicates hotels by name, keeps the best offer per hotel, caches the result in Redis, and serves price-range filters straight from Redis. The aggregation runs as a **Temporal** workflow.
 
 **Stack:** Node.js 20 · TypeScript · Express 5 · Temporal (TypeScript SDK) · Redis 7 · Docker Compose
@@ -105,6 +107,7 @@ All env vars are parsed and validated once with `zod` in [src/lib/config.ts](src
 | `WORKFLOW_TIMEOUT_MS` | `20000` | Workflow execution timeout (→ `504`) |
 | `REDIS_URL` | `redis://redis:6379` | |
 | `CACHE_TTL_SECONDS` | `300` | TTL of the per-city cache |
+| `PARTIAL_CACHE_TTL_SECONDS` | `30` | Shorter TTL for results built while a supplier was down |
 | `SUPPLIER_A_DOWN` / `SUPPLIER_B_DOWN` | `false` | Initial state of the outage toggle |
 
 ## Architecture
@@ -246,6 +249,10 @@ Open http://localhost:8080 (Docker) or http://localhost:8233 (`temporal server s
 - Open a run to see its **event history**: both supplier activities scheduled in parallel, retry attempts, the cache write, and the result.
 - During an outage, the failed supplier activity shows its attempts and error, while the workflow still completes.
 
+![Temporal UI timeline of a hotelOffersWorkflow run with Supplier B down](docs/images/temporal-workflow.png)
+
+*A run with Supplier B down. `fetchSupplierA` and `fetchSupplierB` start in parallel; A succeeds immediately, B is attempted 3 times (red bar, "3 •") and gives up, then `saveToRedis` caches the partial result with the short TTL. The workflow still completes with Supplier A's offers in about 2 s.*
+
 ## Testing
 
 ```bash
@@ -257,10 +264,14 @@ npm test
 | [test/selectBestOffers.test.ts](test/selectBestOffers.test.ts) | Overlap, cheaper wins, price tie → commission, full tie → Supplier A, single-supplier hotels, case/whitespace dedupe, empty input, ordering |
 | [test/hotelOffers.workflow.test.ts](test/hotelOffers.workflow.test.ts) | Real workflow on Temporal's time-skipping test server with mocked activities: both succeed, one fails (3 attempts), non-retryable failure (1 attempt), both fail (`AllSuppliersUnavailable`), cache failure tolerated |
 | [test/hotelCache.test.ts](test/hotelCache.test.ts) | Redis filtering via `ioredis-mock`: inclusive bounds, only min, only max, no match, cache miss vs cached-empty, stale replacement, TTLs |
-| [test/api.test.ts](test/api.test.ts) | `supertest`: validation errors, cache hit/miss flow, 502/504/500 mapping, mock suppliers, admin toggle, health status codes |
+| [test/api.test.ts](test/api.test.ts) | `supertest`: validation errors, cache hit/miss flow, 502/503/504/413/500 mapping, mock suppliers, admin toggle, health status codes |
 | [test/integration.test.ts](test/integration.test.ts) | Real supplier activities and health checker against the running mock API: retryable vs non-retryable errors, `ok`/`degraded`/`down` |
 
 The first run downloads Temporal's test server binary, so it needs network access.
+
+**CI** ([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs on every push and pull request in two jobs:
+1. Typecheck, lint, the test suite above, and the production build.
+2. An end-to-end run: `docker compose up --build --wait`, then the full Postman collection via `newman` against the live stack.
 
 ## Design decisions
 
@@ -289,7 +300,7 @@ All key names come from one helper, [src/lib/redisKeys.ts](src/lib/redisKeys.ts)
 |---|---|---|
 | `hotels:{city}:byPrice` | Sorted set | member = normalized hotel name, score = price |
 | `hotels:{city}:data` | Hash | field = normalized hotel name, value = `HotelOffer` JSON |
-| `hotels:{city}:meta` | String | `{ count, updatedAt }`, which marks the city as cached |
+| `hotels:{city}:meta` | String | `{ count, updatedAt, partial }`, which marks the city as cached |
 
 - **Writes** use `MULTI`/`EXEC`: delete the three keys, `ZADD`, `HSET`, then set TTLs and the meta key. The transaction runs as one unit, so readers never see a half-updated city and stale hotels can't linger.
 - **Reads** filter inside Redis. One pipelined round trip runs `EXISTS meta` and `ZRANGE byPrice <min> <max> BYSCORE`, with `-inf`/`+inf` for a missing bound. A second runs `HMGET data <names…>`. The sorted set returns members ordered by score, then by member, which matches the API's price-then-name ordering, so no JS sorting or filtering is needed.
@@ -299,7 +310,8 @@ All key names come from one helper, [src/lib/redisKeys.ts](src/lib/redisKeys.ts)
 
 - **No price filter:** the workflow always runs, so the response is fresh. Each run also refreshes the cache.
 - **Price filter:** served from Redis if `hotels:{city}:meta` exists. Otherwise the workflow runs first to populate the cache, then the filter runs in Redis.
-- Entries expire after `CACHE_TTL_SECONDS` (default 300 s). Results gathered while a supplier was down are cached like any other. They are refreshed by the next unfiltered request or expire with the TTL.
+- Entries expire after `CACHE_TTL_SECONDS` (default 300 s).
+- **Partial results** (one supplier was down) are cached with `PARTIAL_CACHE_TTL_SECONDS` (default 30 s) and flagged `partial: true` in the meta key. Filtered requests can still be served while a supplier is down, and the incomplete list ages out shortly after the supplier recovers instead of lingering for the full TTL.
 
 ### Other choices
 

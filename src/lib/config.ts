@@ -15,6 +15,7 @@ const envSchema = z.object({
 
   REDIS_URL: z.string().min(1).default('redis://redis:6379'),
   CACHE_TTL_SECONDS: z.coerce.number().int().positive().default(300),
+  PARTIAL_CACHE_TTL_SECONDS: z.coerce.number().int().positive().default(30),
 
   SUPPLIER_A_DOWN: z.stringbool().default(false),
   SUPPLIER_B_DOWN: z.stringbool().default(false),

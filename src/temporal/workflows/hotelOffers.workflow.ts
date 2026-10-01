@@ -65,7 +65,8 @@ export async function hotelOffersWorkflow({ city }: HotelOffersInput): Promise<H
   const offers = selectBestOffers(a.ok ? a.value : empty, b.ok ? b.value : empty);
 
   try {
-    await saveToRedis(city, offers);
+    // A partial list gets a short TTL, so it is replaced soon after the supplier recovers.
+    await saveToRedis(city, offers, { partial: !a.ok || !b.ok });
   } catch (error) {
     // The offers are still correct; a cache failure shouldn't fail the request.
     log.warn('Caching offers failed', { city, error: errorMessage(error) });

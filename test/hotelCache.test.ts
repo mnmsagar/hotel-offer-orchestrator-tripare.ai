@@ -4,6 +4,8 @@ import type { Redis } from 'ioredis';
 import { readCityOffers, writeCityOffers } from '../src/lib/hotelCache';
 import { redisKeys } from '../src/lib/redisKeys';
 import type { HotelOffer } from '../src/domain/types';
+import { createRedisActivities } from '../src/temporal/activities/redis.activities';
+import { silentLogger } from './helpers';
 
 const offers: HotelOffer[] = [
   { name: 'Bloomrooms', price: 2800, supplier: 'Supplier B', commissionPct: 7 },
@@ -22,7 +24,7 @@ describe('hotelCache (Redis filtering)', () => {
     // ioredis-mock implements the ioredis API in memory; cast because its types are a separate package.
     redis = new RedisMock() as unknown as Redis;
     await redis.flushall();
-    await writeCityOffers(redis, 'Delhi', offers, 300);
+    await writeCityOffers(redis, 'Delhi', offers, { ttlSeconds: 300 });
   });
 
   it('returns null on a cache miss', async () => {
@@ -51,13 +53,13 @@ describe('hotelCache (Redis filtering)', () => {
   });
 
   it('caches empty results as a hit, not a miss', async () => {
-    await writeCityOffers(redis, 'atlantis', [], 300);
+    await writeCityOffers(redis, 'atlantis', [], { ttlSeconds: 300 });
     expect(await readCityOffers(redis, 'atlantis')).toEqual([]);
     expect(JSON.parse((await redis.get(redisKeys.meta('atlantis')))!)).toMatchObject({ count: 0 });
   });
 
   it('replaces stale hotels on rewrite', async () => {
-    await writeCityOffers(redis, 'delhi', [offers[0]!], 300);
+    await writeCityOffers(redis, 'delhi', [offers[0]!], { ttlSeconds: 300 });
     expect(names(await readCityOffers(redis, 'delhi'))).toEqual(['Bloomrooms']);
   });
 
@@ -67,5 +69,31 @@ describe('hotelCache (Redis filtering)', () => {
       expect(ttl).toBeGreaterThan(0);
       expect(ttl).toBeLessThanOrEqual(300);
     }
+  });
+
+  describe('saveToRedis activity', () => {
+    const activities = () =>
+      createRedisActivities({
+        getRedis: () => redis,
+        cacheTtlSeconds: 300,
+        partialCacheTtlSeconds: 30,
+        logger: silentLogger,
+      });
+
+    it('uses the full TTL for complete results', async () => {
+      await activities().saveToRedis('mumbai', offers);
+      expect(await redis.ttl(redisKeys.byPrice('mumbai'))).toBeGreaterThan(30);
+      expect(JSON.parse((await redis.get(redisKeys.meta('mumbai')))!)).toMatchObject({ partial: false });
+    });
+
+    it('uses the short TTL for partial results (a supplier was down)', async () => {
+      await activities().saveToRedis('mumbai', offers, { partial: true });
+      for (const key of [redisKeys.byPrice('mumbai'), redisKeys.data('mumbai'), redisKeys.meta('mumbai')]) {
+        const ttl = await redis.ttl(key);
+        expect(ttl).toBeGreaterThan(0);
+        expect(ttl).toBeLessThanOrEqual(30);
+      }
+      expect(JSON.parse((await redis.get(redisKeys.meta('mumbai')))!)).toMatchObject({ partial: true });
+    });
   });
 });

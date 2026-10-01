@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: Typecheck, lint, test, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      # Includes workflow tests on Temporal's time-skipping test server (downloaded on first run).
+      - run: npm test
+      - run: npm run build
+
+  e2e:
+    name: Docker Compose end-to-end
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: checks
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Start stack
+        run: docker compose up --build --detach --wait --wait-timeout 180
+
+      - name: Wait for the worker to pick up workflows
+        run: |
+          for i in $(seq 1 60); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' 'http://localhost:3000/api/hotels?city=delhi') || true
+            [ "$code" = "200" ] && echo "ready after ${i} tries" && exit 0
+            sleep 2
+          done
+          echo "API never returned 200"; exit 1
+
+      - name: Run Postman collection
+        run: npx --yes newman run postman/hotel-offer-orchestrator.postman_collection.json
+
+      - name: Logs on failure
+        if: failure()
+        run: docker compose logs --tail=200
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v

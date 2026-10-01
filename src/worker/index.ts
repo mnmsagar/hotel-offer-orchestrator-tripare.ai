@@ -37,6 +37,7 @@ const run = async (): Promise<void> => {
         supplierTimeoutMs: config.SUPPLIER_TIMEOUT_MS,
         getRedis,
         cacheTtlSeconds: config.CACHE_TTL_SECONDS,
+        partialCacheTtlSeconds: config.PARTIAL_CACHE_TTL_SECONDS,
         logger,
       }),
     });

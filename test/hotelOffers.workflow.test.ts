@@ -25,6 +25,7 @@ interface Calls {
   a: number;
   b: number;
   saved: HotelOffer[][];
+  partial: (boolean | undefined)[];
 }
 
 const fail = () => Promise.reject(new Error('supplier down'));
@@ -44,12 +45,13 @@ describe('hotelOffersWorkflow', () => {
   });
 
   const run = async (overrides: Partial<HotelActivities>) => {
-    const calls: Calls = { a: 0, b: 0, saved: [] };
+    const calls: Calls = { a: 0, b: 0, saved: [], partial: [] };
     const activities: HotelActivities = {
       fetchSupplierA: async () => A,
       fetchSupplierB: async () => B,
-      saveToRedis: async (_city, offers) => {
+      saveToRedis: async (_city, offers, options) => {
         calls.saved.push(offers);
+        calls.partial.push(options?.partial);
       },
       ...overrides,
     };
@@ -88,6 +90,7 @@ describe('hotelOffersWorkflow', () => {
       { name: 'Taj Palace', price: 5900, supplier: 'Supplier B', commissionPct: 10 },
     ]);
     expect(calls.saved).toEqual([offers]);
+    expect(calls.partial).toEqual([false]);
   });
 
   it('returns a partial result when one supplier fails (after 3 attempts)', async () => {
@@ -96,6 +99,7 @@ describe('hotelOffersWorkflow', () => {
     expect(offers.map((o) => o.supplier)).toEqual(['Supplier A', 'Supplier A']);
     expect(calls.b).toBe(3);
     expect(calls.a).toBe(1);
+    expect(calls.partial).toEqual([true]); // cached with the short TTL
   });
 
   it('does not retry non-retryable failures', async () => {

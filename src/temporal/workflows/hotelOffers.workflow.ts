@@ -14,7 +14,14 @@ const activityOptions = {
   },
 } as const;
 
-const { fetchSupplierA, fetchSupplierB, saveToRedis } = proxyActivities<HotelActivities>(activityOptions);
+const { fetchSupplierA, fetchSupplierB } = proxyActivities<HotelActivities>(activityOptions);
+
+// Caching is best-effort (the workflow succeeds without it), so give up sooner than for suppliers:
+// worst case ≈ 2 × 3s + 500ms instead of ≈ 3 × 5s + 1.5s when Redis is down.
+const { saveToRedis } = proxyActivities<HotelActivities>({
+  startToCloseTimeout: '3s',
+  retry: { maximumAttempts: 2, initialInterval: '500ms', backoffCoefficient: 2 },
+});
 
 export interface HotelOffersInput {
   /** Normalized (trimmed, lower-cased) city name. */

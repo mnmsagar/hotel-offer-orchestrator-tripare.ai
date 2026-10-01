@@ -60,6 +60,7 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+    restart: unless-stopped
 
   temporal:
     # Official Temporal CLI image running the dev server: Temporal server + Web UI in one

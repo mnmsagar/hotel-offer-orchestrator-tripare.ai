@@ -19,12 +19,24 @@ const mapError = (err: unknown): Mapped => {
     if (cause instanceof TimeoutFailure) return { status: 504, message: 'Upstream timeout' };
   }
 
-  // express.json() parse errors carry a 4xx `status` and `type: 'entity.parse.failed'`.
-  if (typeof err === 'object' && err !== null && 'type' in err && err.type === 'entity.parse.failed') {
-    return { status: 400, message: 'Malformed JSON body' };
-  }
+  const clientError = asExposedClientError(err);
+  if (clientError) return clientError;
 
   return { status: 500, message: 'Internal server error' };
+};
+
+/**
+ * express.json() (body-parser) raises http-errors with a 4xx `status` and `expose: true`,
+ * e.g. malformed JSON (400), body too large (413), unsupported charset (415).
+ * `expose` means the message is safe to show to clients.
+ */
+const asExposedClientError = (err: unknown): Mapped | undefined => {
+  if (typeof err !== 'object' || err === null) return undefined;
+  const { status, expose, type, message } = err as { status?: unknown; expose?: unknown; type?: unknown; message?: unknown };
+  if (expose !== true || typeof status !== 'number' || status < 400 || status >= 500) return undefined;
+  if (type === 'entity.parse.failed') return { status, message: 'Malformed JSON body' };
+  if (type === 'entity.too.large') return { status, message: 'Request body too large' };
+  return { status, message: typeof message === 'string' ? message : 'Bad request' };
 };
 
 /** Central error middleware: maps known errors to status codes and never leaks stack traces. */

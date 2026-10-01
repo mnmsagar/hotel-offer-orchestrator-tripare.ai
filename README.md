@@ -148,8 +148,11 @@ Supplier activities ──HTTP──> GET /supplierA/hotels, GET /supplierB/hote
 | Unknown city / no matches | `200 []` |
 | One supplier down | `200` with the other supplier's offers |
 | Both suppliers down | `502 { "error": "All suppliers unavailable" }` |
-| Workflow timed out | `504` |
-| Temporal unreachable | `503` |
+| Workflow timed out (e.g. no worker running) | `504` after `WORKFLOW_TIMEOUT_MS` (20 s) |
+| Temporal unreachable | `503 { "error": "Workflow service unavailable" }` within ~5 s |
+| Redis unreachable, no price filter | `200`. The workflow result is returned and the failed cache write is only logged |
+| Redis unreachable, price filter | `503 { "error": "Cache unavailable" }` within ~2 s |
+| Price filter on a cached city while Temporal/worker is down | `200`, served from Redis |
 
 ```bash
 # All offers for Delhi (always runs the workflow → fresh data)

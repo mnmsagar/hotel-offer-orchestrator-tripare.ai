@@ -98,6 +98,13 @@ describe('GET /api/hotels — error mapping', () => {
     expect((await request(app).get('/api/hotels?city=delhi')).status).toBe(504);
   });
 
+  it('503 when Redis is unavailable for a price filter', async () => {
+    const { app } = buildTestApp({ readCache: () => Promise.reject(new Error('Command timed out')) });
+    const res = await request(app).get('/api/hotels?city=delhi&maxPrice=5000');
+    expect(res.status).toBe(503);
+    expect(res.body).toEqual({ error: 'Cache unavailable' });
+  });
+
   it('500 for unexpected errors, without leaking details', async () => {
     const app = failWith(new Error('secret internal detail'));
     const res = await request(app).get('/api/hotels?city=delhi');
@@ -153,6 +160,15 @@ describe('mock suppliers and admin toggle', () => {
       .set('content-type', 'application/json')
       .send('{bad json')
       .expect(400);
+  });
+
+  it('413 for a request body over the 10kb limit', async () => {
+    const { app } = buildTestApp();
+    const res = await request(app)
+      .post('/admin/suppliers/supplierA/status')
+      .send({ down: true, padding: 'a'.repeat(12_000) });
+    expect(res.status).toBe(413);
+    expect(res.body).toEqual({ error: 'Request body too large' });
   });
 
   it('does not mount admin routes when disabled (production)', async () => {

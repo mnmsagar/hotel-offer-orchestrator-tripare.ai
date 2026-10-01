@@ -37,7 +37,9 @@ services:
     restart: unless-stopped
 
   worker:
+    # Same image as `api` (built by the api service); never try to pull it from a registry.
     image: hotel-offer-orchestrator:local
+    pull_policy: never
     command: ["node", "dist/worker/index.js"]
     environment: *app-env
     depends_on:
@@ -59,54 +61,19 @@ services:
       timeout: 3s
       retries: 10
 
-  temporal-db:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_USER: temporal
-      POSTGRES_PASSWORD: temporal
-    volumes:
-      - temporal-db-data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U temporal"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-
   temporal:
-    # auto-setup creates the schema and the "default" namespace on first boot (local dev only).
-    image: temporalio/auto-setup:1.29.7
-    environment:
-      DB: postgres12
-      DB_PORT: 5432
-      POSTGRES_USER: temporal
-      POSTGRES_PWD: temporal
-      POSTGRES_SEEDS: temporal-db
+    # Official Temporal CLI image running the dev server: Temporal server + Web UI in one
+    # container, "default" namespace created on start. State is in-memory (fine for local/demo).
+    image: temporalio/temporal:1.9.1
+    entrypoint: ["temporal"]
+    command: ["server", "start-dev", "--ip", "0.0.0.0", "--ui-port", "8080", "--namespace", "default", "--log-level", "warn"]
     ports:
-      - "7233:7233"
-    depends_on:
-      temporal-db:
-        condition: service_healthy
+      - "7233:7233" # gRPC frontend
+      - "8080:8080" # Web UI
     healthcheck:
-      test:
-        - CMD-SHELL
-        - >-
-          temporal operator cluster health --address temporal:7233 | grep -q SERVING ||
-          tctl --address temporal:7233 cluster health | grep -q SERVING
-      interval: 10s
+      test: ["CMD", "temporal", "operator", "cluster", "health", "--address", "127.0.0.1:7233", "--command-timeout", "3s"]
+      interval: 5s
       timeout: 5s
-      retries: 15
-      start_period: 30s
-
-  temporal-ui:
-    image: temporalio/ui:2.54.1
-    environment:
-      TEMPORAL_ADDRESS: temporal:7233
-      TEMPORAL_CORS_ORIGINS: http://localhost:3000
-    ports:
-      - "8080:8080"
-    depends_on:
-      temporal:
-        condition: service_healthy
-
-volumes:
-  temporal-db-data:
+      retries: 20
+      start_period: 10s
+    restart: unless-stopped

@@ -35,18 +35,16 @@ Aggregates hotel offers from two suppliers, de-duplicates hotels by name, keeps 
 docker compose up --build
 ```
 
-This starts six services:
+This starts four services:
 
 | Service | Purpose | URL |
 |---|---|---|
 | `api` | Express API + mock supplier endpoints | http://localhost:3000 |
 | `worker` | Temporal worker (runs the workflow and activities) | – |
 | `redis` | Redis 7 cache | localhost:6379 |
-| `temporal` | Temporal server (auto-setup) | localhost:7233 |
-| `temporal-db` | PostgreSQL for Temporal | – |
-| `temporal-ui` | Temporal Web UI | http://localhost:8080 |
+| `temporal` | Temporal dev server + Web UI (official `temporalio/temporal` image) | gRPC localhost:7233 · UI http://localhost:8080 |
 
-The first boot takes a minute while Temporal creates its schema. Once `api` is healthy:
+The first run takes a few minutes to pull images and build. Check `docker compose ps` until `api`, `redis` and `temporal` show `(healthy)`, then:
 
 ```bash
 curl "http://localhost:3000/api/hotels?city=delhi"
@@ -304,6 +302,7 @@ All key names come from one helper, [src/lib/redisKeys.ts](src/lib/redisKeys.ts)
 
 - **Workflow ID** `hotel-offers-<city>-<uuid>` is generated in the API, not the workflow, which must stay deterministic.
 - **Worker startup** retries the Temporal connection with capped exponential backoff instead of crashing while Temporal boots.
+- **Temporal in Docker** uses the official `temporalio/temporal` image running `temporal server start-dev`: server, Web UI and the `default` namespace in one container, with in-memory state. It starts in seconds and has no database bootstrapping step, which suits a local demo. The deprecated `temporalio/auto-setup` + PostgreSQL combination was flaky on first boot. Workflow history is lost on restart, which is fine here since Redis is only a cache. A production deployment would run Temporal on a persistent store (PostgreSQL/Cassandra) or Temporal Cloud.
 - **Docker base image** is `node:20-bookworm-slim`, not Alpine. Temporal's native `core-bridge` only ships glibc binaries, so the worker cannot run on Alpine's musl. A single multi-stage image runs either the API or the worker, as a non-root user.
 - **ioredis 5** (not 6): `ioredis-mock` only supports ioredis 5, and it lets the Redis tests run without a server.
 - **Workflow input** is an object (`{ city }`) rather than a positional string, so fields can be added later without breaking running workflows' signatures.

@@ -6,6 +6,8 @@ Aggregates hotel offers from two suppliers, de-duplicates hotels by name, keeps 
 
 **Stack:** Node.js 20 · TypeScript · Express 5 · Temporal (TypeScript SDK) · Redis 7 · Docker Compose
 
+> **How I approached it:** see [APPROACH.md](APPROACH.md) for the design decisions, failure handling, verification and trade-offs.
+
 ---
 
 ## Contents
